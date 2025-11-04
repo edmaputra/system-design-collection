@@ -15,44 +15,105 @@ The Flight Booking System follows a **microservices architecture** pattern with 
 
 ## 🏢 High-Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                          Client Layer                          │
-├─────────────────────────────────────────────────────────────────┤
-│  Web App    │  Mobile App  │  Partner APIs  │  Admin Dashboard │
-└─────────────────────────────────────────────────────────────────┘
-                                  │
-┌─────────────────────────────────────────────────────────────────┐
-│                         API Gateway                            │
-│              (Rate Limiting, Auth, Routing)                   │
-└─────────────────────────────────────────────────────────────────┘
-                                  │
-┌─────────────────────────────────────────────────────────────────┐
-│                      Load Balancer                            │
-└─────────────────────────────────────────────────────────────────┘
-                                  │
-        ┌─────────────────────────┼─────────────────────────┐
-        │                         │                         │
-┌───────────────┐        ┌───────────────┐        ┌───────────────┐
-│  Core Services│        │  Support Srvs │        │ External Integ│
-├───────────────┤        ├───────────────┤        ├───────────────┤
-│• User Service │        │• Notification │        │• Payment Gwy  │
-│• Flight Svc   │        │• Email Service│        │• Airline APIs │
-│• Booking Svc  │        │• SMS Service  │        │• GDS Systems  │
-│• Payment Svc  │        │• Analytics    │        │• Maps API     │
-│• Inventory    │        │• Audit/Logs   │        │• Currency API │
-└───────────────┘        └───────────────┘        └───────────────┘
-                                  │
-┌─────────────────────────────────────────────────────────────────┐
-│                    Message Broker (Kafka)                     │
-│                  (Event Streaming & Pub/Sub)                  │
-└─────────────────────────────────────────────────────────────────┘
-                                  │
-┌─────────────────────────────────────────────────────────────────┐
-│                        Data Layer                             │
-├─────────────────────────────────────────────────────────────────┤
-│ PostgreSQL │ MongoDB │ Redis │ Elasticsearch │ Data Warehouse │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph "Client Layer"
+        WEB[Web Application]
+        MOBILE[Mobile App]
+        PARTNER[Partner APIs]
+        ADMIN[Admin Dashboard]
+    end
+
+    subgraph "API Gateway Layer"
+        GATEWAY[API Gateway<br/>Rate Limiting, Auth, Routing]
+    end
+
+    subgraph "Load Balancing"
+        LB[Load Balancer<br/>Auto-scaling]
+    end
+
+    subgraph "Core Services"
+        USER[User Service<br/>Auth & Profiles]
+        FLIGHT[Flight Service<br/>Search & Schedule]
+        BOOKING[Booking Service<br/>Reservations]
+        PAYMENT[Payment Service<br/>Transactions]
+        INVENTORY[Inventory Service<br/>Seat Management]
+    end
+
+    subgraph "Support Services"
+        NOTIFY[Notification Service<br/>Email & SMS]
+        EMAIL[Email Service]
+        SMS[SMS Service]
+        ANALYTICS[Analytics Service<br/>Business Intelligence]
+        AUDIT[Audit Service<br/>Logging & Compliance]
+    end
+
+    subgraph "External Integrations"
+        PAY_GW[Payment Gateway<br/>Stripe/PayPal]
+        AIRLINE_API[Airline APIs<br/>GDS Systems]
+        MAPS[Maps API]
+        CURRENCY[Currency API]
+    end
+
+    subgraph "Message Broker"
+        KAFKA[Apache Kafka<br/>Event Streaming & Pub/Sub]
+    end
+
+    subgraph "Data Layer"
+        POSTGRES[(PostgreSQL<br/>Transactional Data)]
+        MONGO[(MongoDB<br/>Documents & Logs)]
+        REDIS[(Redis<br/>Cache & Sessions)]
+        ELASTIC[(Elasticsearch<br/>Search & Analytics)]
+        DW[(Data Warehouse<br/>BigQuery/Snowflake)]
+    end
+
+    WEB --> GATEWAY
+    MOBILE --> GATEWAY
+    PARTNER --> GATEWAY
+    ADMIN --> GATEWAY
+
+    GATEWAY --> LB
+    LB --> USER
+    LB --> FLIGHT
+    LB --> BOOKING
+    LB --> PAYMENT
+    LB --> INVENTORY
+
+    USER --> POSTGRES
+    USER --> REDIS
+    FLIGHT --> POSTGRES
+    FLIGHT --> REDIS
+    BOOKING --> POSTGRES
+    PAYMENT --> POSTGRES
+    INVENTORY --> POSTGRES
+    INVENTORY --> REDIS
+
+    BOOKING --> KAFKA
+    PAYMENT --> KAFKA
+    USER --> KAFKA
+
+    KAFKA --> NOTIFY
+    KAFKA --> ANALYTICS
+    KAFKA --> AUDIT
+
+    NOTIFY --> EMAIL
+    NOTIFY --> SMS
+    NOTIFY --> MONGO
+
+    AUDIT --> ELASTIC
+    ANALYTICS --> DW
+
+    PAYMENT --> PAY_GW
+    FLIGHT --> AIRLINE_API
+    FLIGHT --> MAPS
+    PAYMENT --> CURRENCY
+
+    style WEB fill:#4285f4,stroke:#333,stroke-width:2px,color:#fff
+    style MOBILE fill:#4285f4,stroke:#333,stroke-width:2px,color:#fff
+    style GATEWAY fill:#ea4335,stroke:#333,stroke-width:2px,color:#fff
+    style KAFKA fill:#fbbc04,stroke:#333,stroke-width:2px,color:#000
+    style POSTGRES fill:#336791,stroke:#333,stroke-width:2px,color:#fff
+    style REDIS fill:#dc382d,stroke:#333,stroke-width:2px,color:#fff
 ```
 
 ## 🎛️ Microservices Breakdown
@@ -193,26 +254,100 @@ L3 Cache (CDN): Static content caching for UI assets
 
 ## 🔄 Communication Patterns
 
-### Synchronous Communication (REST APIs)
-- User authentication requests
-- Real-time flight search
-- Payment processing
-- Booking confirmations
+```mermaid
+graph TB
+    subgraph "Synchronous Communication - REST APIs"
+        CLIENT[Client Request]
+        API_GW[API Gateway]
+        
+        subgraph "Real-time Operations"
+            AUTH[User Authentication]
+            SEARCH[Flight Search]
+            PAY[Payment Processing]
+            CONFIRM[Booking Confirmation]
+        end
+    end
+    
+    subgraph "Asynchronous Communication - Events"
+        EVENT_BUS[Event Bus - Kafka]
+        
+        subgraph "Event Publishers"
+            BOOK_EVENT[Booking Created]
+            PAY_EVENT[Payment Success]
+            FLIGHT_EVENT[Flight Updated]
+            USER_EVENT[User Registered]
+        end
+        
+        subgraph "Event Subscribers"
+            NOTIFY_SUB[Notification Service]
+            INV_SUB[Inventory Service]
+            ANALYTICS_SUB[Analytics Service]
+            AUDIT_SUB[Audit Service]
+        end
+    end
 
-### Asynchronous Communication (Events)
-- Booking confirmation → Notification Service
-- Payment success → Inventory Service
-- Flight schedule changes → Affected bookings
-- User registration → Welcome email
+    CLIENT --> API_GW
+    API_GW --> AUTH
+    API_GW --> SEARCH
+    API_GW --> PAY
+    API_GW --> CONFIRM
+    
+    CONFIRM --> BOOK_EVENT
+    PAY --> PAY_EVENT
+    SEARCH --> FLIGHT_EVENT
+    AUTH --> USER_EVENT
+    
+    BOOK_EVENT --> EVENT_BUS
+    PAY_EVENT --> EVENT_BUS
+    FLIGHT_EVENT --> EVENT_BUS
+    USER_EVENT --> EVENT_BUS
+    
+    EVENT_BUS --> NOTIFY_SUB
+    EVENT_BUS --> INV_SUB
+    EVENT_BUS --> ANALYTICS_SUB
+    EVENT_BUS --> AUDIT_SUB
 
-### Event-Driven Architecture
+    style CLIENT fill:#4285f4,stroke:#333,stroke-width:2px,color:#fff
+    style EVENT_BUS fill:#fbbc04,stroke:#333,stroke-width:2px,color:#000
+    style NOTIFY_SUB fill:#34a853,stroke:#333,stroke-width:2px,color:#fff
 ```
-Flight Booked Event
-├── Update inventory (Inventory Service)
-├── Send confirmation email (Notification Service)
-├── Process payment (Payment Service)
-├── Log activity (Audit Service)
-└── Update analytics (Analytics Service)
+
+### Event-Driven Architecture - Booking Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant BookingSvc as Booking Service
+    participant Kafka
+    participant InventorySvc as Inventory Service
+    participant NotifySvc as Notification Service
+    participant PaymentSvc as Payment Service
+    participant AuditSvc as Audit Service
+    participant AnalyticsSvc as Analytics Service
+
+    User->>BookingSvc: Create Booking Request
+    BookingSvc->>BookingSvc: Validate Request
+    BookingSvc->>Kafka: Publish "BookingCreated" Event
+    BookingSvc-->>User: Booking Created (202 Accepted)
+    
+    Kafka->>InventorySvc: BookingCreated Event
+    InventorySvc->>InventorySvc: Update Seat Inventory
+    InventorySvc->>Kafka: Publish "InventoryUpdated" Event
+    
+    Kafka->>NotifySvc: BookingCreated Event
+    NotifySvc->>NotifySvc: Generate Confirmation
+    NotifySvc->>User: Send Email Confirmation
+    NotifySvc->>User: Send SMS Notification
+    
+    Kafka->>PaymentSvc: BookingCreated Event
+    PaymentSvc->>PaymentSvc: Initiate Payment Hold
+    PaymentSvc->>Kafka: Publish "PaymentPending" Event
+    
+    Kafka->>AuditSvc: BookingCreated Event
+    AuditSvc->>AuditSvc: Log Booking Activity
+    
+    Kafka->>AnalyticsSvc: BookingCreated Event
+    AnalyticsSvc->>AnalyticsSvc: Update Business Metrics
 ```
 
 ## 🏠 Technology Stack
@@ -326,16 +461,91 @@ user-service/
 ## 🚀 Deployment Architecture
 
 ### Container Strategy
-- **Docker**: Service containerization
-- **Kubernetes**: Container orchestration
-- **Helm**: Kubernetes package management
-- **Multi-stage Builds**: Optimized container images
 
-### Environment Strategy
-```
-Development → Staging → Production
-     ↓           ↓          ↓
-Feature Branch → Integration → Release Branch
+```mermaid
+graph TB
+    subgraph "Development Environment"
+        DEV_CODE[Source Code]
+        DEV_BUILD[Docker Build]
+        DEV_TEST[Local Testing]
+    end
+    
+    subgraph "CI/CD Pipeline"
+        GIT[Git Push]
+        CI[CI Server<br/>GitHub Actions]
+        BUILD[Build & Test]
+        SCAN[Security Scan]
+        REGISTRY[Container Registry<br/>Docker Hub/ECR/GCR]
+    end
+    
+    subgraph "Staging Environment"
+        STG_K8S[Kubernetes Cluster]
+        STG_DEPLOY[Staging Deployment]
+        STG_TEST[Integration Tests]
+    end
+    
+    subgraph "Production Environment"
+        subgraph "Multi-Region K8s"
+            PROD_US[US Region<br/>Kubernetes]
+            PROD_EU[EU Region<br/>Kubernetes]
+            PROD_ASIA[Asia Region<br/>Kubernetes]
+        end
+        
+        subgraph "Load Balancing"
+            GLB[Global Load Balancer]
+            CDN[CDN - CloudFront/CloudFlare]
+        end
+        
+        subgraph "Deployment Strategy"
+            BLUE[Blue Environment<br/>Current Version]
+            GREEN[Green Environment<br/>New Version]
+            CANARY[Canary Deployment<br/>10% Traffic]
+        end
+    end
+    
+    subgraph "Monitoring"
+        MONITOR[Monitoring Stack<br/>Prometheus + Grafana]
+        LOGS[Logging Stack<br/>ELK/Loki]
+        TRACES[Tracing<br/>Jaeger]
+    end
+
+    DEV_CODE --> DEV_BUILD
+    DEV_BUILD --> DEV_TEST
+    DEV_TEST --> GIT
+    
+    GIT --> CI
+    CI --> BUILD
+    BUILD --> SCAN
+    SCAN --> REGISTRY
+    
+    REGISTRY --> STG_DEPLOY
+    STG_DEPLOY --> STG_K8S
+    STG_K8S --> STG_TEST
+    
+    STG_TEST --> GREEN
+    GREEN --> CANARY
+    CANARY --> BLUE
+    
+    REGISTRY --> PROD_US
+    REGISTRY --> PROD_EU
+    REGISTRY --> PROD_ASIA
+    
+    PROD_US --> GLB
+    PROD_EU --> GLB
+    PROD_ASIA --> GLB
+    GLB --> CDN
+    
+    PROD_US --> MONITOR
+    PROD_EU --> MONITOR
+    PROD_ASIA --> MONITOR
+    
+    PROD_US --> LOGS
+    PROD_US --> TRACES
+
+    style DEV_CODE fill:#4285f4,stroke:#333,stroke-width:2px,color:#fff
+    style CI fill:#34a853,stroke:#333,stroke-width:2px,color:#fff
+    style REGISTRY fill:#fbbc04,stroke:#333,stroke-width:2px,color:#000
+    style GLB fill:#ea4335,stroke:#333,stroke-width:2px,color:#fff
 ```
 
 ### Zero-Downtime Deployment
