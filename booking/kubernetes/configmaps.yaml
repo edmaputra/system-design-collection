@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: booking-system
+data:
+  # General Application Settings
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  
+  # Service URLs (Internal Cluster DNS)
+  USER_SERVICE_URL: "http://user-service:3001"
+  SEARCH_SERVICE_URL: "http://search-service:3002"
+  BOOKING_SERVICE_URL: "http://booking-service:3003"
+  PAYMENT_SERVICE_URL: "http://payment-service:3004"
+  NOTIFICATION_SERVICE_URL: "http://notification-service:3005"
+  REVIEW_SERVICE_URL: "http://review-service:3006"
+  
+  # Database Hosts
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  MONGODB_HOST: "mongodb"
+  MONGODB_PORT: "27017"
+  RABBITMQ_HOST: "rabbitmq"
+  RABBITMQ_PORT: "5672"
+  
+  # Cache Settings
+  REDIS_TTL: "3600"
+  CACHE_ENABLED: "true"
+  
+  # Rate Limiting
+  RATE_LIMIT_WINDOW: "60000"
+  RATE_LIMIT_MAX_REQUESTS: "100"
+  
+  # API Settings
+  API_VERSION: "v1"
+  API_TIMEOUT: "30000"
+  
+  # Pagination
+  DEFAULT_PAGE_SIZE: "20"
+  MAX_PAGE_SIZE: "100"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-scripts
+  namespace: booking-system
+data:
+  init-databases.sql: |
+    -- Create separate databases for each service
+    CREATE DATABASE user_db;
+    CREATE DATABASE search_db;
+    CREATE DATABASE booking_db;
+    CREATE DATABASE payment_db;
+    CREATE DATABASE review_db;
+
+    -- Grant privileges
+    GRANT ALL PRIVILEGES ON DATABASE user_db TO booking_admin;
+    GRANT ALL PRIVILEGES ON DATABASE search_db TO booking_admin;
+    GRANT ALL PRIVILEGES ON DATABASE booking_db TO booking_admin;
+    GRANT ALL PRIVILEGES ON DATABASE payment_db TO booking_admin;
+    GRANT ALL PRIVILEGES ON DATABASE review_db TO booking_admin;
+
+    -- Connect to each database and create extensions
+    \c user_db
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+
+    \c search_db
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+    \c booking_db
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+
+    \c payment_db
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+    \c review_db
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongodb-init-scripts
+  namespace: booking-system
+data:
+  init-collections.js: |
+    // Switch to notifications database
+    db = db.getSiblingDB('notifications');
+
+    // Create collections with validation
+    db.createCollection('notifications', {
+      validator: {
+        $jsonSchema: {
+          bsonType: 'object',
+          required: ['userId', 'type', 'channel', 'status'],
+          properties: {
+            userId: { bsonType: 'string' },
+            type: { enum: ['booking_confirmation', 'payment_receipt', 'cancellation'] },
+            channel: { enum: ['email', 'sms', 'push'] },
+            status: { enum: ['pending', 'sent', 'failed'] }
+          }
+        }
+      }
+    });
+
+    // Create indexes
+    db.notifications.createIndex({ userId: 1, createdAt: -1 });
+    db.notifications.createIndex({ status: 1 });
+    db.notifications.createIndex({ createdAt: 1 }, { expireAfterSeconds: 2592000 }); // 30 days TTL
+
+    // Analytics database
+    db = db.getSiblingDB('analytics');
+
+    db.createCollection('events');
+    db.events.createIndex({ eventType: 1, timestamp: -1 });
+    db.events.createIndex({ userId: 1, timestamp: -1 });
+    db.events.createIndex({ timestamp: 1 }, { expireAfterSeconds: 7776000 }); // 90 days TTL

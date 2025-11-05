@@ -1,0 +1,34 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast-ssd
+provisioner: kubernetes.io/gce-pd  # For GKE
+# For AWS EKS, use: ebs.csi.aws.com
+# For Azure AKS, use: disk.csi.azure.com
+parameters:
+  type: pd-ssd
+  replication-type: regional-pd
+  fstype: ext4
+  # For AWS EKS, use:
+  # type: gp3
+  # iops: "3000"
+  # throughput: "125"
+  # For Azure AKS, use:
+  # storageaccounttype: Premium_LRS
+  # kind: Managed
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: standard-hdd
+provisioner: kubernetes.io/gce-pd
+parameters:
+  type: pd-standard
+  replication-type: regional-pd
+  fstype: ext4
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete

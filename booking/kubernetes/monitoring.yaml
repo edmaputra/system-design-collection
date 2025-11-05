@@ -1,0 +1,262 @@
+# Monitoring Stack Configuration
+# This file contains instructions for installing Prometheus, Grafana, and ELK stack
+# using Helm charts for easier management
+
+---
+# Install Prometheus and Grafana using kube-prometheus-stack
+# 
+# Commands to install:
+# 
+# helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+# helm repo update
+# 
+# helm install prometheus prometheus-community/kube-prometheus-stack \
+#   --namespace monitoring \
+#   --create-namespace \
+#   --set prometheus.prometheusSpec.retention=30d \
+#   --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=fast-ssd \
+#   --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=100Gi \
+#   --set grafana.adminPassword=admin123 \
+#   --set grafana.persistence.enabled=true \
+#   --set grafana.persistence.storageClassName=fast-ssd \
+#   --set grafana.persistence.size=10Gi
+
+---
+# ServiceMonitor for User Service
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: user-service-monitor
+  namespace: booking-system
+  labels:
+    app: user-service
+spec:
+  selector:
+    matchLabels:
+      app: user-service
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+---
+# ServiceMonitor for Search Service
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: search-service-monitor
+  namespace: booking-system
+  labels:
+    app: search-service
+spec:
+  selector:
+    matchLabels:
+      app: search-service
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+---
+# ServiceMonitor for Booking Service
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: booking-service-monitor
+  namespace: booking-system
+  labels:
+    app: booking-service
+spec:
+  selector:
+    matchLabels:
+      app: booking-service
+  endpoints:
+  - port: http
+    path: /actuator/prometheus
+    interval: 30s
+---
+# ServiceMonitor for Payment Service
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: payment-service-monitor
+  namespace: booking-system
+  labels:
+    app: payment-service
+spec:
+  selector:
+    matchLabels:
+      app: payment-service
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+---
+# ServiceMonitor for Notification Service
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: notification-service-monitor
+  namespace: booking-system
+  labels:
+    app: notification-service
+spec:
+  selector:
+    matchLabels:
+      app: notification-service
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+---
+# ServiceMonitor for Review Service
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: review-service-monitor
+  namespace: booking-system
+  labels:
+    app: review-service
+spec:
+  selector:
+    matchLabels:
+      app: review-service
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+---
+# PrometheusRule for Alerting
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: booking-system-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus
+spec:
+  groups:
+  - name: booking-system
+    interval: 30s
+    rules:
+    - alert: HighErrorRate
+      expr: |
+        sum(rate(http_requests_total{status=~"5.."}[5m])) by (service)
+        /
+        sum(rate(http_requests_total[5m])) by (service)
+        > 0.05
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "High error rate detected"
+        description: "Service {{ $labels.service }} has error rate above 5%"
+    
+    - alert: HighMemoryUsage
+      expr: |
+        (container_memory_usage_bytes{namespace="booking-system"} 
+        / container_spec_memory_limit_bytes{namespace="booking-system"}) > 0.9
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High memory usage"
+        description: "Container {{ $labels.container }} is using {{ $value | humanizePercentage }} of memory"
+    
+    - alert: HighCPUUsage
+      expr: |
+        (rate(container_cpu_usage_seconds_total{namespace="booking-system"}[5m]) 
+        / container_spec_cpu_quota{namespace="booking-system"} * 100000) > 80
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High CPU usage"
+        description: "Container {{ $labels.container }} is using {{ $value }}% CPU"
+    
+    - alert: PodCrashLooping
+      expr: |
+        rate(kube_pod_container_status_restarts_total{namespace="booking-system"}[15m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Pod crash looping"
+        description: "Pod {{ $labels.pod }} is crash looping"
+    
+    - alert: ServiceDown
+      expr: |
+        up{namespace="booking-system"} == 0
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Service is down"
+        description: "Service {{ $labels.job }} is down"
+---
+# ELK Stack Installation Instructions
+#
+# Install Elasticsearch:
+# helm repo add elastic https://helm.elastic.co
+# helm repo update
+#
+# helm install elasticsearch elastic/elasticsearch \
+#   --namespace logging \
+#   --create-namespace \
+#   --set replicas=3 \
+#   --set volumeClaimTemplate.storageClassName=fast-ssd \
+#   --set volumeClaimTemplate.resources.requests.storage=100Gi \
+#   --set esJavaOpts="-Xmx2g -Xms2g"
+#
+# Install Kibana:
+# helm install kibana elastic/kibana \
+#   --namespace logging \
+#   --set service.type=LoadBalancer \
+#   --set resources.requests.cpu=500m \
+#   --set resources.requests.memory=1Gi
+#
+# Install Filebeat:
+# helm install filebeat elastic/filebeat \
+#   --namespace logging \
+#   --set daemonset.enabled=true
+#
+# Install Metricbeat (optional):
+# helm install metricbeat elastic/metricbeat \
+#   --namespace logging
+---
+# Jaeger for Distributed Tracing
+#
+# Install Jaeger Operator:
+# kubectl create namespace observability
+# kubectl create -f https://github.com/jaegertracing/jaeger-operator/releases/download/v1.51.0/jaeger-operator.yaml -n observability
+#
+# Then apply this Jaeger instance:
+apiVersion: jaegertracing.io/v1
+kind: Jaeger
+metadata:
+  name: jaeger
+  namespace: observability
+spec:
+  strategy: production
+  storage:
+    type: elasticsearch
+    options:
+      es:
+        server-urls: http://elasticsearch-master.logging:9200
+    esIndexCleaner:
+      enabled: true
+      numberOfDays: 7
+      schedule: "55 23 * * *"
+  ingress:
+    enabled: true
+    annotations:
+      kubernetes.io/ingress.class: nginx
+  query:
+    replicas: 2
+  collector:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi

@@ -1,0 +1,156 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: flight-booking-ingress
+  namespace: booking-system
+  annotations:
+    # NGINX Ingress Controller annotations
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    
+    # Rate limiting
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+    
+    # Timeouts
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    
+    # CORS
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    
+    # Security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: SAMEORIGIN";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains";
+    
+    # TLS/SSL
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    cert-manager.io/acme-challenge-type: http01
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - api.flightbooking.com
+    - www.flightbooking.com
+    secretName: tls-secret
+  rules:
+  - host: api.flightbooking.com
+    http:
+      paths:
+      # User Service Routes
+      - path: /api/v1/auth
+        pathType: Prefix
+        backend:
+          service:
+            name: user-service
+            port:
+              number: 3001
+      - path: /api/v1/users
+        pathType: Prefix
+        backend:
+          service:
+            name: user-service
+            port:
+              number: 3001
+      
+      # Search Service Routes
+      - path: /api/v1/search
+        pathType: Prefix
+        backend:
+          service:
+            name: search-service
+            port:
+              number: 3002
+      - path: /api/v1/flights
+        pathType: Prefix
+        backend:
+          service:
+            name: search-service
+            port:
+              number: 3002
+      
+      # Booking Service Routes
+      - path: /api/v1/bookings
+        pathType: Prefix
+        backend:
+          service:
+            name: booking-service
+            port:
+              number: 3003
+      
+      # Payment Service Routes
+      - path: /api/v1/payments
+        pathType: Prefix
+        backend:
+          service:
+            name: payment-service
+            port:
+              number: 3004
+      
+      # Notification Service Routes
+      - path: /api/v1/notifications
+        pathType: Prefix
+        backend:
+          service:
+            name: notification-service
+            port:
+              number: 3005
+      
+      # Review Service Routes
+      - path: /api/v1/reviews
+        pathType: Prefix
+        backend:
+          service:
+            name: review-service
+            port:
+              number: 3006
+      
+      # Health check endpoint
+      - path: /health
+        pathType: Exact
+        backend:
+          service:
+            name: user-service
+            port:
+              number: 3001
+---
+# Cert-Manager ClusterIssuer for Let's Encrypt
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@flightbooking.com  # Change this to your email
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+---
+# Staging issuer for testing
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: admin@flightbooking.com
+    privateKeySecretRef:
+      name: letsencrypt-staging
+    solvers:
+    - http01:
+        ingress:
+          class: nginx

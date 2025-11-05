@@ -1,0 +1,333 @@
+# Payment, Notification, and Review Services
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: booking-system
+  labels:
+    app: payment-service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3004
+    targetPort: 3004
+    protocol: TCP
+    name: http
+  selector:
+    app: payment-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: booking-system
+  labels:
+    app: payment-service
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+        tier: backend
+    spec:
+      containers:
+      - name: payment-service
+        image: gcr.io/YOUR_PROJECT/payment-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3004
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3004"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: payment-db-url
+        - name: RABBITMQ_URL
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secret
+              key: url
+        - name: STRIPE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-secrets
+              key: stripe-secret-key
+        - name: STRIPE_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: api-secrets
+              key: stripe-webhook-secret
+        - name: NOTIFICATION_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: NOTIFICATION_SERVICE_URL
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3004
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3004
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-service-hpa
+  namespace: booking-system
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment-service
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: booking-system
+  labels:
+    app: notification-service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3005
+    targetPort: 3005
+    protocol: TCP
+    name: http
+  selector:
+    app: notification-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: booking-system
+  labels:
+    app: notification-service
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+        tier: backend
+    spec:
+      containers:
+      - name: notification-service
+        image: gcr.io/YOUR_PROJECT/notification-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3005
+          name: http
+        env:
+        - name: PORT
+          value: "3005"
+        - name: MONGODB_URL
+          valueFrom:
+            secretKeyRef:
+              name: mongodb-secret
+              key: url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: url
+        - name: RABBITMQ_URL
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secret
+              key: url
+        - name: SENDGRID_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-secrets
+              key: sendgrid-api-key
+        - name: TWILIO_ACCOUNT_SID
+          valueFrom:
+            secretKeyRef:
+              name: api-secrets
+              key: twilio-account-sid
+        - name: TWILIO_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: api-secrets
+              key: twilio-auth-token
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3005
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3005
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: notification-service-hpa
+  namespace: booking-system
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: notification-service
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: review-service
+  namespace: booking-system
+  labels:
+    app: review-service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3006
+    targetPort: 3006
+    protocol: TCP
+    name: http
+  selector:
+    app: review-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: review-service
+  namespace: booking-system
+  labels:
+    app: review-service
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: review-service
+  template:
+    metadata:
+      labels:
+        app: review-service
+        tier: backend
+    spec:
+      containers:
+      - name: review-service
+        image: gcr.io/YOUR_PROJECT/review-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3006
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3006"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: review-db-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: url
+        - name: BOOKING_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: BOOKING_SERVICE_URL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3006
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3006
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: review-service-hpa
+  namespace: booking-system
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: review-service
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
